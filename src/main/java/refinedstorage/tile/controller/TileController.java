@@ -25,6 +25,7 @@ import refinedstorage.api.network.INetworkMaster;
 import refinedstorage.api.network.INetworkSlave;
 import refinedstorage.api.network.IWirelessGridHandler;
 import refinedstorage.api.storage.CompareFlags;
+import refinedstorage.api.storage.IGroupedStorage;
 import refinedstorage.api.storage.IStorage;
 import refinedstorage.api.storage.IStorageProvider;
 import refinedstorage.apiimpl.autocrafting.BasicCraftingTask;
@@ -32,6 +33,7 @@ import refinedstorage.apiimpl.autocrafting.CraftingPattern;
 import refinedstorage.apiimpl.autocrafting.ProcessingCraftingTask;
 import refinedstorage.apiimpl.network.GridHandler;
 import refinedstorage.apiimpl.network.WirelessGridHandler;
+import refinedstorage.apiimpl.storage.GroupedStorage;
 import refinedstorage.block.BlockController;
 import refinedstorage.block.EnumControllerType;
 import refinedstorage.container.ContainerController;
@@ -56,11 +58,8 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
     private GridHandler gridHandler = new GridHandler(this);
     private WirelessGridHandler wirelessGridHandler = new WirelessGridHandler(this);
 
-    private List<ItemStack> items = new ArrayList<ItemStack>();
-    private List<ItemStack> combinedItems = new ArrayList<ItemStack>();
-    private Set<Integer> combinedItemsIndices = new HashSet<Integer>();
-
     private List<IStorage> storages = new ArrayList<IStorage>();
+    private IGroupedStorage storage = new GroupedStorage(this);
 
     private List<INetworkSlave> slaves = new ArrayList<INetworkSlave>();
     private List<INetworkSlave> slavesToAdd = new ArrayList<INetworkSlave>();
@@ -170,7 +169,9 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
             wirelessGridHandler.update();
 
             if (getType() == EnumControllerType.NORMAL) {
-                if (energy.getEnergyStored() - energyUsage >= 0) {
+                if (!RefinedStorage.INSTANCE.controllerUsesRf) {
+                    energy.setEnergyStored(energy.getMaxEnergyStored());
+                } else if (energy.getEnergyStored() - energyUsage >= 0) {
                     energy.extractEnergy(energyUsage, false);
                 } else {
                     energy.setEnergyStored(0);
@@ -249,9 +250,13 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         disconnectSlaves();
     }
 
+    public IGroupedStorage getStorage() {
+        return storage;
+    }
+
     @Override
-    public List<ItemStack> getItems() {
-        return items;
+    public List<IStorage> getStorages() {
+        return storages;
     }
 
     @Override
@@ -326,7 +331,7 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
             int score = 0;
 
             for (ItemStack input : patterns.get(i).getInputs()) {
-                ItemStack stored = getItem(input, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
+                ItemStack stored = storage.get(input, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
 
                 score += stored != null ? stored.stackSize : 0;
             }
@@ -352,12 +357,12 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
                 continue;
             }
 
-            if (slave instanceof TileWirelessTransmitter) {
-                range += ((TileWirelessTransmitter) slave).getRange();
+            if (slave instanceof IStorageProvider) {
+                ((IStorageProvider) slave).addStorages(storages);
             }
 
-            if (slave instanceof IStorageProvider) {
-                ((IStorageProvider) slave).provide(storages);
+            if (slave instanceof TileWirelessTransmitter) {
+                range += ((TileWirelessTransmitter) slave).getRange();
             }
 
             if (slave instanceof TileCrafter) {
@@ -402,79 +407,34 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
             }
         });
 
-        updateItems();
-        updateItemsWithClient();
-    }
-
-    private void updateItems() {
-        items.clear();
-
-        for (IStorage storage : storages) {
-            storage.addItems(items);
-        }
-
-        for (ICraftingPattern pattern : patterns) {
-            for (ItemStack output : pattern.getOutputs()) {
-                ItemStack patternStack = output.copy();
-                patternStack.stackSize = 0;
-                items.add(patternStack);
-            }
-        }
-
-        combinedItems.clear();
-        combinedItemsIndices.clear();
-
-        for (int i = 0; i < items.size(); ++i) {
-            if (combinedItemsIndices.contains(i)) {
-                continue;
-            }
-
-            ItemStack stack = items.get(i);
-
-            for (int j = i + 1; j < items.size(); ++j) {
-                if (combinedItemsIndices.contains(j)) {
-                    continue;
-                }
-
-                ItemStack otherStack = items.get(j);
-
-                if (RefinedStorageUtils.compareStackNoQuantity(stack, otherStack)) {
-                    // We copy here so we don't modify the quantity of the ItemStack IStorage uses.
-                    // We re-get the ItemStack because the stack may change from a previous iteration in this loop
-                    ItemStack newStack = items.get(i).copy();
-                    newStack.stackSize += otherStack.stackSize;
-                    items.set(i, newStack);
-
-                    combinedItems.add(otherStack);
-                    combinedItemsIndices.add(j);
-                }
-            }
-        }
-
-        items.removeAll(combinedItems);
+        storage.rebuild();
     }
 
     @Override
-    public void updateItemsWithClient() {
-        for (EntityPlayer player : worldObj.playerEntities) {
-            if (player.openContainer.getClass() == ContainerGrid.class && pos.equals(((ContainerGrid) player.openContainer).getGrid().getNetworkPosition())) {
-                updateItemsWithClient((EntityPlayerMP) player);
+    public void sendStorageToClient() {
+        if (!storage.isRebuilding()) {
+            for (EntityPlayer player : worldObj.playerEntities) {
+                if (isWatchingGrid(player)) {
+                    sendStorageToClient((EntityPlayerMP) player);
+                }
             }
         }
     }
 
     @Override
-    public void updateItemsWithClient(EntityPlayerMP player) {
-        RefinedStorage.NETWORK.sendTo(new MessageGridItems(this), player);
+    public void sendStorageToClient(EntityPlayerMP player) {
+        if (!storage.isRebuilding()) {
+            RefinedStorage.NETWORK.sendTo(new MessageGridItems(this), player);
+        }
+    }
+
+    private boolean isWatchingGrid(EntityPlayer player) {
+        return player.openContainer.getClass() == ContainerGrid.class && pos.equals(((ContainerGrid) player.openContainer).getGrid().getNetworkPosition());
     }
 
     @Override
     public ItemStack push(ItemStack stack, int size, boolean simulate) {
-        if (stack == null || stack.getItem() == null) {
-            return null;
-        }
-
-        if (storages.isEmpty()) {
+        if (stack == null || stack.getItem() == null || storages.isEmpty()) {
             return ItemHandlerHelper.copyStackWithSize(stack, size);
         }
 
@@ -505,8 +465,7 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
                 }
             }
 
-            updateItems();
-            updateItemsWithClient();
+            storage.add(ItemHandlerHelper.copyStackWithSize(stack, sizePushed));
         }
 
         return remainder;
@@ -538,22 +497,10 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         }
 
         if (newStack != null) {
-            updateItems();
-            updateItemsWithClient();
+            storage.remove(newStack);
         }
 
         return newStack;
-    }
-
-    @Override
-    public ItemStack getItem(ItemStack stack, int flags) {
-        for (ItemStack otherStack : items) {
-            if (RefinedStorageUtils.compareStack(otherStack, stack, flags)) {
-                return otherStack;
-            }
-        }
-
-        return null;
     }
 
     @Override

@@ -63,7 +63,7 @@ public class TileStorage extends TileSlave implements IStorageProvider, IStorage
 
     @Override
     public int getEnergyUsage() {
-        return 1;
+        return RefinedStorage.INSTANCE.storageRfUsage;
     }
 
     @Override
@@ -89,7 +89,7 @@ public class TileStorage extends TileSlave implements IStorageProvider, IStorage
     }
 
     @Override
-    public void provide(List<IStorage> storages) {
+    public void addStorages(List<IStorage> storages) {
         if (storage != null) {
             storages.add(storage);
         }

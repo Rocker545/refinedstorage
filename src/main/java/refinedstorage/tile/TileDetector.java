@@ -6,6 +6,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.world.World;
 import net.minecraftforge.items.IItemHandler;
+import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageBlocks;
 import refinedstorage.RefinedStorageUtils;
 import refinedstorage.container.ContainerDetector;
@@ -42,7 +43,7 @@ public class TileDetector extends TileSlave implements ICompareConfig {
 
     @Override
     public int getEnergyUsage() {
-        return 2;
+        return RefinedStorage.INSTANCE.detectorRfUsage;
     }
 
     @Override
@@ -53,7 +54,7 @@ public class TileDetector extends TileSlave implements ICompareConfig {
             boolean wasPowered = powered;
 
             if (slot != null) {
-                ItemStack stack = network.getItem(slot, compare);
+                ItemStack stack = network.getStorage().get(slot, compare);
 
                 if (stack != null) {
                     switch (mode) {

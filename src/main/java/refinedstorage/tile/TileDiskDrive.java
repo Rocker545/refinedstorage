@@ -83,11 +83,11 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
 
     @Override
     public int getEnergyUsage() {
-        int usage = 0;
+        int usage = RefinedStorage.INSTANCE.diskDriveRfUsage;
 
         for (int i = 0; i < disks.getSlots(); ++i) {
             if (disks.getStackInSlot(i) != null) {
-                usage += 1;
+                usage += RefinedStorage.INSTANCE.diskDrivePerDiskRfUsage;
             }
         }
 
@@ -110,7 +110,7 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
     }
 
     @Override
-    public void provide(List<IStorage> storages) {
+    public void addStorages(List<IStorage> storages) {
         for (IStorage storage : this.storages) {
             if (storage != null) {
                 storages.add(storage);
