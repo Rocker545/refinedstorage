@@ -5,7 +5,6 @@ import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
@@ -13,6 +12,7 @@ import net.minecraftforge.items.ItemHandlerHelper;
 import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageItems;
 import refinedstorage.RefinedStorageUtils;
+import refinedstorage.api.network.INetworkMaster;
 import refinedstorage.api.storage.IStorage;
 import refinedstorage.api.storage.IStorageProvider;
 import refinedstorage.apiimpl.storage.NBTStorage;
@@ -25,7 +25,7 @@ import refinedstorage.tile.config.*;
 
 import java.util.List;
 
-public class TileDiskDrive extends TileSlave implements IStorageProvider, IStorageGui, ICompareConfig, IModeConfig {
+public class TileDiskDrive extends TileNode implements IStorageProvider, IStorageGui, ICompareConfig, IModeConfig {
     public class Storage extends NBTStorage {
         public Storage(ItemStack disk) {
             super(disk.getTagCompound(), EnumStorageType.getById(disk.getItemDamage()).getCapacity(), TileDiskDrive.this);
@@ -37,18 +37,18 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
         }
 
         @Override
-        public ItemStack push(ItemStack stack, int size, boolean simulate) {
+        public ItemStack insertItem(ItemStack stack, int size, boolean simulate) {
             if (!ModeFilter.respectsMode(getFilters(), getModeConfig(), getCompare(), stack)) {
                 return ItemHandlerHelper.copyStackWithSize(stack, size);
             }
 
-            return super.push(stack, size, simulate);
+            return super.insertItem(stack, size, simulate);
         }
     }
 
-    public static final String NBT_PRIORITY = "Priority";
-    public static final String NBT_COMPARE = "Compare";
-    public static final String NBT_MODE = "Mode";
+    private static final String NBT_PRIORITY = "Priority";
+    private static final String NBT_COMPARE = "Compare";
+    private static final String NBT_MODE = "Mode";
 
     private BasicItemHandler disks = new BasicItemHandler(8, this, new BasicItemValidator(RefinedStorageItems.STORAGE_DISK)) {
         @Override
@@ -61,6 +61,10 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
                 storages[slot] = null;
             } else {
                 storages[slot] = new Storage(disk);
+            }
+
+            if (network != null) {
+                network.getStorage().rebuild();
             }
         }
 
@@ -83,11 +87,11 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
 
     @Override
     public int getEnergyUsage() {
-        int usage = RefinedStorage.INSTANCE.diskDriveRfUsage;
+        int usage = RefinedStorage.INSTANCE.diskDriveUsage;
 
         for (int i = 0; i < disks.getSlots(); ++i) {
             if (disks.getStackInSlot(i) != null) {
-                usage += RefinedStorage.INSTANCE.diskDrivePerDiskRfUsage;
+                usage += RefinedStorage.INSTANCE.diskDrivePerDiskUsage;
             }
         }
 
@@ -95,18 +99,25 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
     }
 
     @Override
-    public void disconnect(World world) {
-        super.disconnect(world);
+    public void onDisconnected() {
+        super.onDisconnected();
 
         for (Storage storage : this.storages) {
             if (storage != null) {
                 storage.writeToNBT();
             }
         }
+    }
+
+    @Override
+    public void onConnectionChange(INetworkMaster network, boolean state) {
+        super.onConnectionChange(network, state);
+
+        network.getStorage().rebuild();
     }
 
     @Override
@@ -232,7 +243,7 @@ public class TileDiskDrive extends TileSlave implements IStorageProvider, IStora
 
     @Override
     public void onPriorityChanged(int priority) {
-        RefinedStorage.NETWORK.sendToServer(new MessagePriorityUpdate(pos, priority));
+        RefinedStorage.INSTANCE.network.sendToServer(new MessagePriorityUpdate(pos, priority));
     }
 
     @Override

@@ -9,18 +9,22 @@ import refinedstorage.RefinedStorageGui;
 import refinedstorage.RefinedStorageItems;
 import refinedstorage.RefinedStorageUtils;
 import refinedstorage.api.network.INetworkMaster;
+import refinedstorage.api.network.INetworkNode;
 import refinedstorage.api.network.IWirelessGridHandler;
 import refinedstorage.api.network.WirelessGridConsumer;
 import refinedstorage.item.ItemWirelessGrid;
+import refinedstorage.tile.TileWirelessTransmitter;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
 public class WirelessGridHandler implements IWirelessGridHandler {
-    private INetworkMaster network;
+    public static final int USAGE_OPEN = 30;
+    public static final int USAGE_EXTRACT = 3;
+    public static final int USAGE_INSERT = 3;
 
-    private int range;
+    private INetworkMaster network;
 
     private List<WirelessGridConsumer> consumers = new ArrayList<WirelessGridConsumer>();
     private List<WirelessGridConsumer> consumersToRemove = new ArrayList<WirelessGridConsumer>();
@@ -40,7 +44,10 @@ public class WirelessGridHandler implements IWirelessGridHandler {
             WirelessGridConsumer consumer = it.next();
 
             if (!RefinedStorageUtils.compareStack(consumer.getWirelessGrid(), consumer.getPlayer().getHeldItem(consumer.getHand()))) {
-                consumer.getPlayer().closeScreen(); // This will call onContainerClosed on the Container and remove it from the list
+                /**
+                 * This will call {@link net.minecraft.inventory.Container#onContainerClosed(EntityPlayer)} so the consumer is removed from the list.
+                 */
+                consumer.getPlayer().closeScreen();
             }
         }
     }
@@ -49,7 +56,7 @@ public class WirelessGridHandler implements IWirelessGridHandler {
     public boolean onOpen(EntityPlayer player, EnumHand hand) {
         int distance = (int) Math.sqrt(Math.pow(network.getPosition().getX() - player.posX, 2) + Math.pow(network.getPosition().getY() - player.posY, 2) + Math.pow(network.getPosition().getZ() - player.posZ, 2));
 
-        if (distance > range) {
+        if (distance > getRange()) {
             return false;
         }
 
@@ -59,7 +66,7 @@ public class WirelessGridHandler implements IWirelessGridHandler {
 
         network.sendStorageToClient((EntityPlayerMP) player);
 
-        drainEnergy(player, ItemWirelessGrid.USAGE_OPEN);
+        drainEnergy(player, USAGE_OPEN);
 
         return true;
     }
@@ -75,12 +82,15 @@ public class WirelessGridHandler implements IWirelessGridHandler {
 
     @Override
     public int getRange() {
-        return range;
-    }
+        int range = 0;
 
-    @Override
-    public void setRange(int range) {
-        this.range = range;
+        for (INetworkNode node : network.getNodes()) {
+            if (node instanceof TileWirelessTransmitter) {
+                range += ((TileWirelessTransmitter) node).getRange();
+            }
+        }
+
+        return range;
     }
 
     @Override

@@ -1,21 +1,22 @@
 package refinedstorage.block;
 
-import net.minecraft.block.Block;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.properties.PropertyBool;
 import net.minecraft.block.state.BlockStateContainer;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
-import refinedstorage.tile.TileSlave;
+import refinedstorage.tile.TileNode;
 
-public abstract class BlockSlave extends BlockBase {
+public abstract class BlockNode extends BlockBase {
     public static final PropertyBool CONNECTED = PropertyBool.create("connected");
 
-    public BlockSlave(String name) {
+    public BlockNode(String name) {
         super(name);
     }
 
@@ -35,7 +36,7 @@ public abstract class BlockSlave extends BlockBase {
     @Override
     public IBlockState getActualState(IBlockState state, IBlockAccess world, BlockPos pos) {
         return super.getActualState(state, world, pos)
-            .withProperty(CONNECTED, ((TileSlave) world.getTileEntity(pos)).isConnected());
+            .withProperty(CONNECTED, ((TileNode) world.getTileEntity(pos)).isConnected());
     }
 
     @Override
@@ -43,29 +44,24 @@ public abstract class BlockSlave extends BlockBase {
         super.onBlockPlacedBy(world, pos, state, player, stack);
 
         if (!world.isRemote) {
-            ((TileSlave) world.getTileEntity(pos)).refreshConnection(world);
+            for (EnumFacing facing : EnumFacing.VALUES) {
+                TileEntity tile = world.getTileEntity(pos.offset(facing));
+
+                if (tile instanceof TileNode && ((TileNode) tile).isConnected()) {
+                    ((TileNode) tile).getNetwork().rebuildNodes();
+
+                    break;
+                }
+            }
         }
     }
 
     @Override
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
         if (!world.isRemote) {
-            TileSlave slave = (TileSlave) world.getTileEntity(pos);
-
-            if (slave.isConnected()) {
-                slave.disconnect(world);
-            }
+            (((TileNode) world.getTileEntity(pos)).getNetwork()).rebuildNodes();
         }
 
         super.breakBlock(world, pos, state);
-    }
-
-    @Override
-    public void neighborChanged(IBlockState state, World world, BlockPos pos, Block block) {
-        super.neighborChanged(state, world, pos, block);
-
-        if (!world.isRemote) {
-            ((TileSlave) world.getTileEntity(pos)).refreshConnection(world);
-        }
     }
 }

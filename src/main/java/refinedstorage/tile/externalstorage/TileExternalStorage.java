@@ -10,13 +10,14 @@ import net.minecraftforge.items.IItemHandler;
 import powercrystals.minefactoryreloaded.api.IDeepStorageUnit;
 import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageUtils;
+import refinedstorage.api.network.INetworkMaster;
 import refinedstorage.api.storage.IStorage;
 import refinedstorage.api.storage.IStorageProvider;
 import refinedstorage.container.ContainerStorage;
 import refinedstorage.inventory.BasicItemHandler;
 import refinedstorage.network.MessagePriorityUpdate;
 import refinedstorage.tile.IStorageGui;
-import refinedstorage.tile.TileSlave;
+import refinedstorage.tile.TileNode;
 import refinedstorage.tile.config.ICompareConfig;
 import refinedstorage.tile.config.IModeConfig;
 import refinedstorage.tile.config.IRedstoneModeConfig;
@@ -25,10 +26,10 @@ import refinedstorage.tile.config.ModeConstants;
 import java.util.ArrayList;
 import java.util.List;
 
-public class TileExternalStorage extends TileSlave implements IStorageProvider, IStorageGui, ICompareConfig, IModeConfig {
-    public static final String NBT_PRIORITY = "Priority";
-    public static final String NBT_COMPARE = "Compare";
-    public static final String NBT_MODE = "Mode";
+public class TileExternalStorage extends TileNode implements IStorageProvider, IStorageGui, ICompareConfig, IModeConfig {
+    private static final String NBT_PRIORITY = "Priority";
+    private static final String NBT_COMPARE = "Compare";
+    private static final String NBT_MODE = "Mode";
 
     private BasicItemHandler filters = new BasicItemHandler(9, this);
 
@@ -40,14 +41,35 @@ public class TileExternalStorage extends TileSlave implements IStorageProvider, 
     private int capacity;
 
     private List<ExternalStorage> storages = new ArrayList<ExternalStorage>();
+    private int lastDrawerCount;
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.externalStorageRfUsage + (storages.size() * RefinedStorage.INSTANCE.externalStoragePerStorageRfUsage);
+        return RefinedStorage.INSTANCE.externalStorageUsage + (storages.size() * RefinedStorage.INSTANCE.externalStoragePerStorageUsage);
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
+    }
+
+    @Override
+    public void onConnectionChange(INetworkMaster network, boolean state) {
+        super.onConnectionChange(network, state);
+
+        network.getStorage().rebuild();
+    }
+
+    @Override
+    public void update() {
+        if (ticks == 0) {
+            updateStorage();
+        } else if (getFacingTile() instanceof IDrawerGroup && lastDrawerCount != ((IDrawerGroup) getFacingTile()).getDrawerCount()) {
+            lastDrawerCount = ((IDrawerGroup) getFacingTile()).getDrawerCount();
+
+            updateStorage();
+        }
+
+        super.update();
     }
 
     @Override
@@ -144,8 +166,8 @@ public class TileExternalStorage extends TileSlave implements IStorageProvider, 
         markDirty();
     }
 
-    // Called when the neighbor block changes
-    public void refreshStorage() {
+    // Called when the neighbor block changes or when a drawer is added or removed to a drawer group
+    public void updateStorage() {
         storages.clear();
 
         TileEntity facing = getFacingTile();
@@ -228,7 +250,7 @@ public class TileExternalStorage extends TileSlave implements IStorageProvider, 
 
     @Override
     public void onPriorityChanged(int priority) {
-        RefinedStorage.NETWORK.sendToServer(new MessagePriorityUpdate(pos, priority));
+        RefinedStorage.INSTANCE.network.sendToServer(new MessagePriorityUpdate(pos, priority));
     }
 
     @Override

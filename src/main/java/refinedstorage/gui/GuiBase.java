@@ -17,14 +17,13 @@ import java.util.Arrays;
 import java.util.List;
 
 public abstract class GuiBase extends GuiContainer {
-    public static final int SIDE_BUTTON_WIDTH = 20;
-    public static final int SIDE_BUTTON_HEIGHT = 20;
+    protected static final int SIDE_BUTTON_WIDTH = 20;
+    protected static final int SIDE_BUTTON_HEIGHT = 20;
 
     private List<SideButton> sideButtons = new ArrayList<SideButton>();
 
     private int lastButtonId = 0;
     private int lastSideButtonY = 6;
-    private String sideButtonTooltip;
 
     private Scrollbar scrollbar;
 
@@ -104,7 +103,7 @@ public abstract class GuiBase extends GuiContainer {
         mouseX -= guiLeft;
         mouseY -= guiTop;
 
-        sideButtonTooltip = null;
+        String sideButtonTooltip = null;
 
         for (SideButton sideButton : sideButtons) {
             sideButton.draw(this, sideButton.getX() + 2, sideButton.getY() + 1);

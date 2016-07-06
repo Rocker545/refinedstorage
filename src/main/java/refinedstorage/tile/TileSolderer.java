@@ -4,7 +4,6 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.inventory.Container;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.world.World;
 import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
@@ -13,6 +12,7 @@ import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageItems;
 import refinedstorage.RefinedStorageUtils;
 import refinedstorage.api.RefinedStorageAPI;
+import refinedstorage.api.network.INetworkMaster;
 import refinedstorage.api.solderer.ISoldererRecipe;
 import refinedstorage.container.ContainerSolderer;
 import refinedstorage.inventory.BasicItemHandler;
@@ -20,9 +20,9 @@ import refinedstorage.inventory.BasicItemValidator;
 import refinedstorage.inventory.SoldererItemHandler;
 import refinedstorage.item.ItemUpgrade;
 
-public class TileSolderer extends TileSlave {
-    public static final String NBT_WORKING = "Working";
-    public static final String NBT_PROGRESS = "Progress";
+public class TileSolderer extends TileNode {
+    private static final String NBT_WORKING = "Working";
+    private static final String NBT_PROGRESS = "Progress";
 
     private BasicItemHandler items = new BasicItemHandler(4, this);
     private BasicItemHandler upgrades = new BasicItemHandler(4, this, new BasicItemValidator(RefinedStorageItems.UPGRADE, ItemUpgrade.TYPE_SPEED));
@@ -36,11 +36,11 @@ public class TileSolderer extends TileSlave {
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.soldererRfUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
+        return RefinedStorage.INSTANCE.soldererUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
         boolean wasWorking = working;
 
         if (items.getStackInSlot(1) == null && items.getStackInSlot(2) == null && items.getStackInSlot(3) == null) {
@@ -61,7 +61,7 @@ public class TileSolderer extends TileSlave {
                     markDirty();
                 }
             } else if (working) {
-                progress += 1 + (RefinedStorageUtils.getUpgradeCount(upgrades, ItemUpgrade.TYPE_SPEED) * RefinedStorage.INSTANCE.soldererSpeedIncreasePerUpgrade);
+                progress += 1 + RefinedStorageUtils.getUpgradeCount(upgrades, ItemUpgrade.TYPE_SPEED);
 
                 if (progress >= recipe.getDuration()) {
                     if (items.getStackInSlot(3) != null) {
@@ -92,10 +92,12 @@ public class TileSolderer extends TileSlave {
     }
 
     @Override
-    public void disconnect(World world) {
-        stop();
+    public void onConnectionChange(INetworkMaster network, boolean state) {
+        super.onConnectionChange(network, state);
 
-        super.disconnect(world);
+        if (!state) {
+            stop();
+        }
     }
 
     public void stop() {

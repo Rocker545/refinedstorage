@@ -1,6 +1,11 @@
 package refinedstorage.item;
 
 import cofh.api.energy.ItemEnergyContainer;
+import ic2.api.item.IElectricItemManager;
+import ic2.api.item.ISpecialElectricItem;
+import net.darkhax.tesla.api.ITeslaConsumer;
+import net.darkhax.tesla.api.ITeslaHolder;
+import net.darkhax.tesla.capability.TeslaCapabilities;
 import net.minecraft.block.Block;
 import net.minecraft.client.resources.I18n;
 import net.minecraft.creativetab.CreativeTabs;
@@ -15,28 +20,36 @@ import net.minecraft.util.*;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.World;
+import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.common.capabilities.ICapabilityProvider;
+import net.minecraftforge.fml.common.Optional;
 import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageBlocks;
 import refinedstorage.tile.controller.TileController;
 import refinedstorage.tile.grid.TileGrid;
 
+import javax.annotation.Nullable;
 import java.util.List;
 
-public class ItemWirelessGrid extends ItemEnergyContainer {
+import static refinedstorage.RefinedStorageUtils.convertIC2ToRF;
+import static refinedstorage.RefinedStorageUtils.convertRFToIC2;
+
+@Optional.InterfaceList({
+    @Optional.Interface(iface = "ic2.api.item.ISpecialElectricItem", modid = "IC2"),
+    @Optional.Interface(iface = "ic2.api.item.IElectricItemManager", modid = "IC2")
+})
+public class ItemWirelessGrid extends ItemEnergyContainer implements ISpecialElectricItem, IElectricItemManager {
     public static final int TYPE_NORMAL = 0;
     public static final int TYPE_CREATIVE = 1;
 
-    public static final String NBT_CONTROLLER_X = "ControllerX";
-    public static final String NBT_CONTROLLER_Y = "ControllerY";
-    public static final String NBT_CONTROLLER_Z = "ControllerZ";
-    public static final String NBT_DIMENSION_ID = "DimensionID";
     public static final String NBT_SORTING_TYPE = "SortingType";
     public static final String NBT_SORTING_DIRECTION = "SortingDirection";
     public static final String NBT_SEARCH_BOX_MODE = "SearchBoxMode";
 
-    public static final int USAGE_OPEN = 30;
-    public static final int USAGE_PULL = 3;
-    public static final int USAGE_PUSH = 3;
+    private static final String NBT_CONTROLLER_X = "ControllerX";
+    private static final String NBT_CONTROLLER_Y = "ControllerY";
+    private static final String NBT_CONTROLLER_Z = "ControllerZ";
+    private static final String NBT_DIMENSION_ID = "DimensionID";
 
     public ItemWirelessGrid() {
         super(3200);
@@ -52,7 +65,12 @@ public class ItemWirelessGrid extends ItemEnergyContainer {
         setMaxDamage(3200);
         setMaxStackSize(1);
         setHasSubtypes(true);
-        setCreativeTab(RefinedStorage.TAB);
+        setCreativeTab(RefinedStorage.INSTANCE.tab);
+    }
+
+    @Override
+    public ICapabilityProvider initCapabilities(ItemStack stack, NBTTagCompound nbt) {
+        return new WirelessGridCapabilityProvider(stack);
     }
 
     @Override
@@ -210,5 +228,110 @@ public class ItemWirelessGrid extends ItemEnergyContainer {
     @Override
     public String getUnlocalizedName(ItemStack stack) {
         return getUnlocalizedName() + "." + stack.getItemDamage();
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public IElectricItemManager getManager(ItemStack stack) {
+        return this;
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public double charge(ItemStack stack, double amount, int tier, boolean ignoreTransferLimit, boolean simulate) {
+        return convertRFToIC2(receiveEnergy(stack, convertIC2ToRF(amount), simulate));
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public double discharge(ItemStack stack, double amount, int tier, boolean ignoreTransferLimit, boolean externally, boolean simulate) {
+        return convertRFToIC2(extractEnergy(stack, convertIC2ToRF(amount), simulate));
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public double getCharge(ItemStack stack) {
+        return convertRFToIC2(getEnergyStored(stack));
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public double getMaxCharge(ItemStack stack) {
+        return convertRFToIC2(getMaxEnergyStored(stack));
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public boolean canUse(ItemStack stack, double amount) {
+        return true;
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public boolean use(ItemStack stack, double amount, EntityLivingBase entity) {
+        return true;
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public void chargeFromArmor(ItemStack stack, EntityLivingBase entity) {
+        // NO OP
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public String getToolTip(ItemStack stack) {
+        return null;
+    }
+
+    @Optional.Method(modid = "IC2")
+    @Override
+    public int getTier(ItemStack stack) {
+        return Integer.MAX_VALUE;
+    }
+
+    class TeslaEnergy implements ITeslaHolder, ITeslaConsumer {
+        private ItemStack stack;
+
+        public TeslaEnergy(ItemStack stack) {
+            this.stack = stack;
+        }
+
+        @Override
+        public long getStoredPower() {
+            return getEnergyStored(stack);
+        }
+
+        @Override
+        public long getCapacity() {
+            return getMaxEnergyStored(stack);
+        }
+
+        @Override
+        public long givePower(long power, boolean simulated) {
+            return receiveEnergy(stack, (int) power, simulated);
+        }
+    }
+
+    class WirelessGridCapabilityProvider implements ICapabilityProvider {
+        private ItemStack stack;
+
+        public WirelessGridCapabilityProvider(ItemStack stack) {
+            this.stack = stack;
+        }
+
+        @Override
+        public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
+            return RefinedStorage.hasTesla() && (capability == TeslaCapabilities.CAPABILITY_HOLDER || capability == TeslaCapabilities.CAPABILITY_CONSUMER);
+        }
+
+        @Override
+        public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
+            if (RefinedStorage.hasTesla() && (capability == TeslaCapabilities.CAPABILITY_HOLDER || capability == TeslaCapabilities.CAPABILITY_CONSUMER)) {
+                return (T) new TeslaEnergy(stack);
+            }
+
+            return null;
+        }
     }
 }

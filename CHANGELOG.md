@@ -1,12 +1,39 @@
 # Refined Storage Changelog
 
+### 0.8.6
+**Bugfixes**
+- Fixed External Storage disconnecting on world reload
+- Huge performance improvements to large networks
+
+### 0.8.5
+**Bugfixes**
+- Fixed crash when Tesla API is not installed
+
+### 0.8.4
+**Bugfixes**
+- Removed delay until grid items are visible
+- Performance improvements
+
+**Features**
+- Added a debug storage disk
+- Added tooltip to solderer progress bar that shows progress percentage
+- Added support for the Tesla energy system
+- Added support for the IC2 (EU) energy system
+- Added a Portuguese (Brazilian) translation by ChaoticTabris
+- Tweaked grid GUI
+
+### 0.8.3
+**Bugfixes**
+- Fixed drawer controllers not working with external storage
+- Fixed right click taking 64 items instead of 32 items
+
 ### 0.8.2
 **Bugfixes**
 - Fixed not being able to take items sometimes
 
 **Features**
 - It is now possible to use middle click multiple times for the same item in grid
-- Added configuration file
+- Made the mod configurable with a config file
 
 ### 0.8.1
 **Bugfixes**

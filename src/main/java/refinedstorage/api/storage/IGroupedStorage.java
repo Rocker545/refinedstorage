@@ -4,6 +4,7 @@ import net.minecraft.item.ItemStack;
 import refinedstorage.api.network.INetworkMaster;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * This holds all items from all the connected storages from a {@link INetworkMaster}.
@@ -14,11 +15,6 @@ public interface IGroupedStorage {
      * added or removed from the network.
      */
     void rebuild();
-
-    /**
-     * @return If this storage is currently rebuilding
-     */
-    boolean isRebuilding();
 
     /**
      * Adds an item to the network. Will merge it with another item if it already exists.
@@ -35,16 +31,21 @@ public interface IGroupedStorage {
     void remove(ItemStack stack);
 
     /**
-     * Gets an item from the network, does not decrement its count.
+     * Gets an item from the network, does not decrement its count like {@link IGroupedStorage#remove(ItemStack)} does.
      *
      * @param stack The stack to find
      * @param flags The flags to compare on, see {@link CompareFlags}
-     * @return The stack, do NOT modify
+     * @return The {@link ItemStack}, do NOT modify
      */
     ItemStack get(ItemStack stack, int flags);
 
     /**
-     * @return All stacks in this storage network
+     * @return All items in this storage network
      */
     Collection<ItemStack> getStacks();
+
+    /**
+     * @return The storages connected to this network
+     */
+    List<IStorage> getStorages();
 }

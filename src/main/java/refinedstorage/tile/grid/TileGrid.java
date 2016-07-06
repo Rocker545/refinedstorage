@@ -22,16 +22,16 @@ import refinedstorage.inventory.BasicItemHandler;
 import refinedstorage.inventory.BasicItemValidator;
 import refinedstorage.item.ItemPattern;
 import refinedstorage.network.MessageGridSettingsUpdate;
-import refinedstorage.tile.TileSlave;
+import refinedstorage.tile.TileNode;
 import refinedstorage.tile.config.IRedstoneModeConfig;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class TileGrid extends TileSlave implements IGrid {
-    public static final String NBT_SORTING_DIRECTION = "SortingDirection";
-    public static final String NBT_SORTING_TYPE = "SortingType";
-    public static final String NBT_SEARCH_BOX_MODE = "SearchBoxMode";
+public class TileGrid extends TileNode implements IGrid {
+    private static final String NBT_SORTING_DIRECTION = "SortingDirection";
+    private static final String NBT_SORTING_TYPE = "SortingType";
+    private static final String NBT_SEARCH_BOX_MODE = "SearchBoxMode";
 
     public static final int SORTING_DIRECTION_ASCENDING = 0;
     public static final int SORTING_DIRECTION_DESCENDING = 1;
@@ -66,25 +66,22 @@ public class TileGrid extends TileSlave implements IGrid {
     private int sortingType = SORTING_TYPE_NAME;
     private int searchBoxMode = SEARCH_BOX_MODE_NORMAL;
 
-    // Used clientside only
-    private List<ItemStack> items = new ArrayList<ItemStack>();
-
     @Override
     public int getEnergyUsage() {
         switch (getType()) {
             case NORMAL:
-                return RefinedStorage.INSTANCE.gridRfUsage;
+                return RefinedStorage.INSTANCE.gridUsage;
             case CRAFTING:
-                return RefinedStorage.INSTANCE.craftingGridRfUsage;
+                return RefinedStorage.INSTANCE.craftingGridUsage;
             case PATTERN:
-                return RefinedStorage.INSTANCE.patternGridRfUsage;
+                return RefinedStorage.INSTANCE.patternGridUsage;
             default:
                 return 0;
         }
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
     }
 
     public EnumGridType getType() {
@@ -93,16 +90,6 @@ public class TileGrid extends TileSlave implements IGrid {
         }
 
         return type == null ? EnumGridType.NORMAL : type;
-    }
-
-    @Override
-    public List<ItemStack> getItems() {
-        return items;
-    }
-
-    @Override
-    public void setItems(List<ItemStack> items) {
-        this.items = items;
     }
 
     @Override
@@ -150,7 +137,7 @@ public class TileGrid extends TileSlave implements IGrid {
 
                 if (slot != null) {
                     if (slot.stackSize == 1 && isConnected()) {
-                        matrix.setInventorySlotContents(i, RefinedStorageUtils.takeFromNetwork(network, slot, 1));
+                        matrix.setInventorySlotContents(i, RefinedStorageUtils.extractItem(network, slot, 1));
                     } else {
                         matrix.decrStackSize(i, 1);
                     }
@@ -227,10 +214,10 @@ public class TileGrid extends TileSlave implements IGrid {
 
                 if (slot != null) {
                     if (getType() == EnumGridType.CRAFTING) {
-                        if (network.push(slot, slot.stackSize, true) != null) {
+                        if (network.insertItem(slot, slot.stackSize, true) != null) {
                             return;
                         } else {
-                            network.push(slot, slot.stackSize, false);
+                            network.insertItem(slot, slot.stackSize, false);
                         }
                     }
 
@@ -244,7 +231,7 @@ public class TileGrid extends TileSlave implements IGrid {
 
                     if (getType() == EnumGridType.CRAFTING) {
                         for (ItemStack possibility : possibilities) {
-                            ItemStack took = RefinedStorageUtils.takeFromNetwork(network, possibility, 1);
+                            ItemStack took = RefinedStorageUtils.extractItem(network, possibility, 1);
 
                             if (took != null) {
                                 matrix.setInventorySlotContents(i, possibility);
@@ -292,17 +279,17 @@ public class TileGrid extends TileSlave implements IGrid {
 
     @Override
     public void onSortingTypeChanged(int type) {
-        RefinedStorage.NETWORK.sendToServer(new MessageGridSettingsUpdate(this, sortingDirection, type, searchBoxMode));
+        RefinedStorage.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(this, sortingDirection, type, searchBoxMode));
     }
 
     @Override
     public void onSortingDirectionChanged(int direction) {
-        RefinedStorage.NETWORK.sendToServer(new MessageGridSettingsUpdate(this, direction, sortingType, searchBoxMode));
+        RefinedStorage.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(this, direction, sortingType, searchBoxMode));
     }
 
     @Override
     public void onSearchBoxModeChanged(int searchBoxMode) {
-        RefinedStorage.NETWORK.sendToServer(new MessageGridSettingsUpdate(this, sortingDirection, sortingType, searchBoxMode));
+        RefinedStorage.INSTANCE.network.sendToServer(new MessageGridSettingsUpdate(this, sortingDirection, sortingType, searchBoxMode));
     }
 
     @Override

@@ -3,6 +3,9 @@ package refinedstorage.tile.controller;
 import cofh.api.energy.EnergyStorage;
 import cofh.api.energy.IEnergyReceiver;
 import io.netty.buffer.ByteBuf;
+import net.darkhax.tesla.api.ITeslaConsumer;
+import net.darkhax.tesla.api.ITeslaHolder;
+import net.darkhax.tesla.capability.TeslaCapabilities;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -10,9 +13,12 @@ import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
+import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.math.BlockPos;
+import net.minecraftforge.common.capabilities.Capability;
 import net.minecraftforge.common.util.Constants;
+import net.minecraftforge.fml.common.Optional;
 import net.minecraftforge.fml.common.network.ByteBufUtils;
 import net.minecraftforge.items.ItemHandlerHelper;
 import refinedstorage.RefinedStorage;
@@ -22,12 +28,10 @@ import refinedstorage.api.autocrafting.ICraftingPattern;
 import refinedstorage.api.autocrafting.ICraftingTask;
 import refinedstorage.api.network.IGridHandler;
 import refinedstorage.api.network.INetworkMaster;
-import refinedstorage.api.network.INetworkSlave;
+import refinedstorage.api.network.INetworkNode;
 import refinedstorage.api.network.IWirelessGridHandler;
-import refinedstorage.api.storage.CompareFlags;
 import refinedstorage.api.storage.IGroupedStorage;
 import refinedstorage.api.storage.IStorage;
-import refinedstorage.api.storage.IStorageProvider;
 import refinedstorage.apiimpl.autocrafting.BasicCraftingTask;
 import refinedstorage.apiimpl.autocrafting.CraftingPattern;
 import refinedstorage.apiimpl.autocrafting.ProcessingCraftingTask;
@@ -39,31 +43,55 @@ import refinedstorage.block.EnumControllerType;
 import refinedstorage.container.ContainerController;
 import refinedstorage.container.ContainerGrid;
 import refinedstorage.item.ItemPattern;
-import refinedstorage.network.MessageGridItems;
+import refinedstorage.network.MessageGridDelta;
+import refinedstorage.network.MessageGridUpdate;
 import refinedstorage.tile.ISynchronizedContainer;
 import refinedstorage.tile.TileBase;
 import refinedstorage.tile.TileCrafter;
-import refinedstorage.tile.TileWirelessTransmitter;
 import refinedstorage.tile.config.IRedstoneModeConfig;
 import refinedstorage.tile.config.RedstoneMode;
 
 import java.util.*;
 
-public class TileController extends TileBase implements INetworkMaster, IEnergyReceiver, ISynchronizedContainer, IRedstoneModeConfig {
-    public static final int ENERGY_CAPACITY = 32000;
-
-    public static final String NBT_CRAFTING_TASKS = "CraftingTasks";
+@Optional.InterfaceList({
+    @Optional.Interface(iface = "net.darkhax.tesla.api.ITeslaConsumer", modid = "Tesla"),
+    @Optional.Interface(iface = "net.darkhax.tesla.api.ITeslaHolder", modid = "Tesla")
+})
+public class TileController extends TileBase implements INetworkMaster, IEnergyReceiver, ITeslaHolder, ITeslaConsumer, ISynchronizedContainer, IRedstoneModeConfig {
     public static final String NBT_ENERGY = "Energy";
+    public static final String NBT_ENERGY_CAPACITY = "EnergyCapacity";
+
+    private static final String NBT_CRAFTING_TASKS = "CraftingTasks";
 
     private GridHandler gridHandler = new GridHandler(this);
     private WirelessGridHandler wirelessGridHandler = new WirelessGridHandler(this);
 
-    private List<IStorage> storages = new ArrayList<IStorage>();
     private IGroupedStorage storage = new GroupedStorage(this);
 
-    private List<INetworkSlave> slaves = new ArrayList<INetworkSlave>();
-    private List<INetworkSlave> slavesToAdd = new ArrayList<INetworkSlave>();
-    private List<INetworkSlave> slavesToRemove = new ArrayList<INetworkSlave>();
+    private Comparator<IStorage> sizeComparator = new Comparator<IStorage>() {
+        @Override
+        public int compare(IStorage left, IStorage right) {
+            if (left.getStored() == right.getStored()) {
+                return 0;
+            }
+
+            return (left.getStored() > right.getStored()) ? -1 : 1;
+        }
+    };
+
+    private Comparator<IStorage> priorityComparator = new Comparator<IStorage>() {
+        @Override
+        public int compare(IStorage left, IStorage right) {
+            if (left.getPriority() == right.getPriority()) {
+                return 0;
+            }
+
+            return (left.getPriority() > right.getPriority()) ? -1 : 1;
+        }
+    };
+
+    private List<INetworkNode> nodes = new ArrayList<INetworkNode>();
+    private Set<BlockPos> nodesPos = new HashSet<BlockPos>();
 
     private List<ICraftingPattern> patterns = new ArrayList<ICraftingPattern>();
 
@@ -72,7 +100,8 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
     private List<ICraftingTask> craftingTasksToAdd = new ArrayList<ICraftingTask>();
     private List<ICraftingTask> craftingTasksToCancel = new ArrayList<ICraftingTask>();
 
-    private EnergyStorage energy = new EnergyStorage(ENERGY_CAPACITY);
+    private EnergyStorage energy = new EnergyStorage(RefinedStorage.INSTANCE.controller);
+    private IC2Energy IC2Energy;
     private int energyUsage;
 
     private int lastEnergyDisplay;
@@ -84,7 +113,13 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
 
     private RedstoneMode redstoneMode = RedstoneMode.IGNORE;
 
-    private List<ClientSlave> clientSlaves = new ArrayList<ClientSlave>();
+    private List<ClientNode> clientNodes = new ArrayList<ClientNode>();
+
+    public TileController() {
+        if (RefinedStorage.hasIC2()) {
+            this.IC2Energy = new IC2Energy(this);
+        }
+    }
 
     @Override
     public BlockPos getPosition() {
@@ -104,37 +139,13 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
     @Override
     public void update() {
         if (!worldObj.isRemote) {
-            boolean forceUpdate = !slavesToAdd.isEmpty() || !slavesToRemove.isEmpty();
-
-            for (INetworkSlave newSlave : slavesToAdd) {
-                boolean found = false;
-
-                for (int i = 0; i < slaves.size(); ++i) {
-                    INetworkSlave slave = slaves.get(i);
-
-                    if (slave.getPosition().equals(newSlave.getPosition())) {
-                        slaves.set(i, newSlave);
-
-                        found = true;
-
-                        break;
-                    }
-                }
-
-                if (!found) {
-                    slaves.add(newSlave);
-                }
+            if (IC2Energy != null) {
+                IC2Energy.update();
             }
 
-            slavesToAdd.clear();
-
-            slaves.removeAll(slavesToRemove);
-            slavesToRemove.clear();
-
             if (canRun()) {
-                if (ticks % 20 == 0 || forceUpdate) {
-                    updateSlaves();
-                }
+                Collections.sort(storage.getStorages(), sizeComparator);
+                Collections.sort(storage.getStorages(), priorityComparator);
 
                 for (ICraftingTask taskToCancel : craftingTasksToCancel) {
                     taskToCancel.onCancelled(this);
@@ -169,10 +180,10 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
             wirelessGridHandler.update();
 
             if (getType() == EnumControllerType.NORMAL) {
-                if (!RefinedStorage.INSTANCE.controllerUsesRf) {
+                if (!RefinedStorage.INSTANCE.controllerUsesEnergy) {
                     energy.setEnergyStored(energy.getMaxEnergyStored());
-                } else if (energy.getEnergyStored() - energyUsage >= 0) {
-                    energy.extractEnergy(energyUsage, false);
+                } else if (energy.getEnergyStored() - getEnergyUsage() >= 0) {
+                    energy.extractEnergy(getEnergyUsage(), false);
                 } else {
                     energy.setEnergyStored(0);
                 }
@@ -180,16 +191,14 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
                 energy.setEnergyStored(energy.getMaxEnergyStored());
             }
 
-            if (!canRun() && !slaves.isEmpty()) {
-                disconnectSlaves();
-
-                updateSlaves();
-            }
-
             if (couldRun != canRun()) {
                 couldRun = canRun();
 
-                worldObj.notifyNeighborsOfStateChange(pos, RefinedStorageBlocks.CONTROLLER);
+                if (!couldRun && !nodes.isEmpty()) {
+                    disconnectAll();
+                } else if (couldRun) {
+                    rebuildNodes();
+                }
             }
 
             if (getEnergyScaledForDisplay() != lastEnergyDisplay) {
@@ -208,31 +217,30 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         super.update();
     }
 
-    @Override
-    public List<INetworkSlave> getSlaves() {
-        return slaves;
-    }
-
-    public List<ClientSlave> getClientSlaves() {
-        return clientSlaves;
-    }
-
-    @Override
-    public void addSlave(INetworkSlave slave) {
-        slavesToAdd.add(slave);
-    }
-
-    @Override
-    public void removeSlave(INetworkSlave slave) {
-        slavesToRemove.add(slave);
-    }
-
-    public void disconnectSlaves() {
-        for (INetworkSlave slave : getSlaves()) {
-            slave.disconnect(worldObj);
+    public void disconnectAll() {
+        for (INetworkNode node : nodes) {
+            node.onDisconnected();
         }
 
-        slaves.clear();
+        nodes.clear();
+    }
+
+    @Override
+    public void invalidate() {
+        super.invalidate();
+
+        if (IC2Energy != null) {
+            IC2Energy.invalidate();
+        }
+    }
+
+    @Override
+    public List<INetworkNode> getNodes() {
+        return nodes;
+    }
+
+    public List<ClientNode> getClientNodes() {
+        return clientNodes;
     }
 
     @Override
@@ -247,16 +255,13 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
 
     @Override
     public void onChunkUnload() {
-        disconnectSlaves();
+        if (IC2Energy != null) {
+            IC2Energy.invalidate();
+        }
     }
 
     public IGroupedStorage getStorage() {
         return storage;
-    }
-
-    @Override
-    public List<IStorage> getStorages() {
-        return storages;
     }
 
     @Override
@@ -331,7 +336,7 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
             int score = 0;
 
             for (ItemStack input : patterns.get(i).getInputs()) {
-                ItemStack stored = storage.get(input, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
+                ItemStack stored = RefinedStorageUtils.getItem(this, input);
 
                 score += stored != null ? stored.stackSize : 0;
             }
@@ -345,86 +350,114 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         return patterns.get(highestPattern);
     }
 
-    private void updateSlaves() {
-        this.energyUsage = 0;
-        this.storages.clear();
-        this.patterns.clear();
+    @Override
+    public void rebuildPatterns() {
+        patterns.clear();
 
-        int range = 0;
-
-        for (INetworkSlave slave : slaves) {
-            if (!slave.canUpdate()) {
-                continue;
-            }
-
-            if (slave instanceof IStorageProvider) {
-                ((IStorageProvider) slave).addStorages(storages);
-            }
-
-            if (slave instanceof TileWirelessTransmitter) {
-                range += ((TileWirelessTransmitter) slave).getRange();
-            }
-
-            if (slave instanceof TileCrafter) {
-                TileCrafter crafter = (TileCrafter) slave;
+        for (INetworkNode node : nodes) {
+            if (node instanceof TileCrafter && node.canUpdate()) {
+                TileCrafter crafter = (TileCrafter) node;
 
                 for (int i = 0; i < crafter.getPatterns().getSlots(); ++i) {
                     ItemStack pattern = crafter.getPatterns().getStackInSlot(i);
 
                     if (pattern != null && ItemPattern.isValid(pattern)) {
-                        patterns.add(new CraftingPattern(crafter.getPos().getX(), crafter.getPos().getY(), crafter.getPos().getZ(), ItemPattern.isProcessing(pattern), ItemPattern.getInputs(pattern), ItemPattern.getOutputs(pattern), ItemPattern.getByproducts(pattern)));
+                        patterns.add(new CraftingPattern(
+                            crafter.getPos().getX(),
+                            crafter.getPos().getY(),
+                            crafter.getPos().getZ(),
+                            ItemPattern.isProcessing(pattern),
+                            ItemPattern.getInputs(pattern),
+                            ItemPattern.getOutputs(pattern),
+                            ItemPattern.getByproducts(pattern)
+                        ));
                     }
                 }
             }
-
-            this.energyUsage += slave.getEnergyUsage();
         }
-
-        wirelessGridHandler.setRange(range);
-
-        Collections.sort(storages, new Comparator<IStorage>() {
-            @Override
-            public int compare(IStorage left, IStorage right) {
-                int leftStored = left.getStored();
-                int rightStored = right.getStored();
-
-                if (leftStored == rightStored) {
-                    return 0;
-                }
-
-                return (leftStored > rightStored) ? -1 : 1;
-            }
-        });
-
-        Collections.sort(storages, new Comparator<IStorage>() {
-            @Override
-            public int compare(IStorage left, IStorage right) {
-                if (left.getPriority() == right.getPriority()) {
-                    return 0;
-                }
-
-                return (left.getPriority() > right.getPriority()) ? -1 : 1;
-            }
-        });
 
         storage.rebuild();
     }
 
     @Override
-    public void sendStorageToClient() {
-        if (!storage.isRebuilding()) {
-            for (EntityPlayer player : worldObj.playerEntities) {
-                if (isWatchingGrid(player)) {
-                    sendStorageToClient((EntityPlayerMP) player);
+    public void rebuildNodes() {
+        List<INetworkNode> newNodes = new ArrayList<INetworkNode>();
+        Set<BlockPos> newNodesPos = new HashSet<BlockPos>();
+
+        Set<BlockPos> checked = new HashSet<BlockPos>();
+        Queue<BlockPos> toCheck = new ArrayDeque<BlockPos>();
+
+        for (EnumFacing facing : EnumFacing.VALUES) {
+            BlockPos pos = this.pos.offset(facing);
+
+            checked.add(pos);
+            toCheck.add(pos);
+        }
+
+        BlockPos currentPos;
+        while ((currentPos = toCheck.poll()) != null) {
+            TileEntity tile = worldObj.getTileEntity(currentPos);
+
+            if (!(tile instanceof INetworkNode)) {
+                continue;
+            }
+
+            INetworkNode node = (INetworkNode) tile;
+
+            if (node.isRemoved()) {
+                continue;
+            }
+
+            newNodes.add(node);
+            newNodesPos.add(node.getPosition());
+
+            if (node.canConduct()) {
+                for (EnumFacing facing : EnumFacing.VALUES) {
+                    BlockPos pos = currentPos.offset(facing);
+
+                    if (checked.add(pos)) {
+                        toCheck.add(pos);
+                    }
                 }
+            }
+        }
+
+        for (INetworkNode newNode : newNodes) {
+            if (!nodesPos.contains(newNode.getPosition())) {
+                newNode.onConnected(this);
+            }
+        }
+
+        for (INetworkNode oldNode : nodes) {
+            if (!newNodesPos.contains(oldNode.getPosition())) {
+                oldNode.onDisconnected();
+            }
+        }
+
+        this.nodes = newNodes;
+        this.nodesPos = newNodesPos;
+    }
+
+    @Override
+    public void sendStorageToClient() {
+        for (EntityPlayer player : worldObj.playerEntities) {
+            if (isWatchingGrid(player)) {
+                sendStorageToClient((EntityPlayerMP) player);
             }
         }
     }
 
     @Override
     public void sendStorageToClient(EntityPlayerMP player) {
-        if (!storage.isRebuilding()) {
-            RefinedStorage.NETWORK.sendTo(new MessageGridItems(this), player);
+        RefinedStorage.INSTANCE.network.sendTo(new MessageGridUpdate(this), player);
+    }
+
+    @Override
+    public void sendStorageDeltaToClient(ItemStack stack, int delta) {
+        for (EntityPlayer player : worldObj.playerEntities) {
+            if (isWatchingGrid(player)) {
+                RefinedStorage.INSTANCE.network.sendTo(new MessageGridDelta(stack, delta, RefinedStorageUtils.hasPattern(this, stack)), (EntityPlayerMP) player);
+            }
         }
     }
 
@@ -433,8 +466,8 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
     }
 
     @Override
-    public ItemStack push(ItemStack stack, int size, boolean simulate) {
-        if (stack == null || stack.getItem() == null || storages.isEmpty()) {
+    public ItemStack insertItem(ItemStack stack, int size, boolean simulate) {
+        if (stack == null || stack.getItem() == null || storage.getStorages().isEmpty()) {
             return ItemHandlerHelper.copyStackWithSize(stack, size);
         }
 
@@ -442,8 +475,8 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
 
         ItemStack remainder = stack;
 
-        for (IStorage storage : storages) {
-            remainder = storage.push(remainder, size, simulate);
+        for (IStorage storage : this.storage.getStorages()) {
+            remainder = storage.insertItem(remainder, size, simulate);
 
             if (remainder == null) {
                 break;
@@ -452,34 +485,34 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
             }
         }
 
-        int sizePushed = remainder != null ? (orginalSize - remainder.stackSize) : orginalSize;
+        int inserted = remainder != null ? (orginalSize - remainder.stackSize) : orginalSize;
 
-        if (!simulate && sizePushed > 0) {
-            for (int i = 0; i < sizePushed; ++i) {
+        if (!simulate && inserted > 0) {
+            for (int i = 0; i < inserted; ++i) {
                 if (!craftingTasks.empty()) {
                     ICraftingTask top = craftingTasks.peek();
 
                     if (top instanceof ProcessingCraftingTask) {
-                        ((ProcessingCraftingTask) top).onPushed(stack);
+                        ((ProcessingCraftingTask) top).onInserted(stack);
                     }
                 }
             }
 
-            storage.add(ItemHandlerHelper.copyStackWithSize(stack, sizePushed));
+            storage.add(ItemHandlerHelper.copyStackWithSize(stack, inserted));
         }
 
         return remainder;
     }
 
     @Override
-    public ItemStack take(ItemStack stack, int size, int flags) {
+    public ItemStack extractItem(ItemStack stack, int size, int flags) {
         int requested = size;
         int received = 0;
 
         ItemStack newStack = null;
 
-        for (IStorage storage : storages) {
-            ItemStack took = storage.take(stack, requested - received, flags);
+        for (IStorage storage : this.storage.getStorages()) {
+            ItemStack took = storage.extractItem(stack, requested - received, flags);
 
             if (took != null) {
                 if (newStack == null) {
@@ -560,6 +593,7 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
     public NBTTagCompound writeUpdate(NBTTagCompound tag) {
         super.writeUpdate(tag);
 
+        tag.setInteger(NBT_ENERGY_CAPACITY, energy.getMaxEnergyStored());
         tag.setInteger(NBT_ENERGY, energy.getEnergyStored());
 
         return tag;
@@ -567,6 +601,7 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
 
     @Override
     public void readUpdate(NBTTagCompound tag) {
+        energy.setCapacity(tag.getInteger(NBT_ENERGY_CAPACITY));
         energy.setEnergyStored(tag.getInteger(NBT_ENERGY));
 
         super.readUpdate(tag);
@@ -582,8 +617,26 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         return energy.getEnergyStored();
     }
 
+    @Optional.Method(modid = "Tesla")
+    @Override
+    public long getStoredPower() {
+        return energy.getEnergyStored();
+    }
+
+    @Optional.Method(modid = "Tesla")
+    @Override
+    public long getCapacity() {
+        return energy.getMaxEnergyStored();
+    }
+
+    @Optional.Method(modid = "Tesla")
+    @Override
+    public long givePower(long power, boolean simulated) {
+        return energy.receiveEnergy((int) power, simulated);
+    }
+
     public int getEnergyScaled(int i) {
-        return (int) ((float) energy.getEnergyStored() / (float) ENERGY_CAPACITY * (float) i);
+        return (int) ((float) energy.getEnergyStored() / (float) energy.getMaxEnergyStored() * (float) i);
     }
 
     public int getEnergyScaledForDisplay() {
@@ -614,7 +667,20 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         this.redstoneMode = mode;
     }
 
+    @Override
     public int getEnergyUsage() {
+        if (!worldObj.isRemote) {
+            int usage = 0;
+
+            for (INetworkNode node : nodes) {
+                if (node.canUpdate()) {
+                    usage += node.getEnergyUsage();
+                }
+            }
+
+            return usage;
+        }
+
         return energyUsage;
     }
 
@@ -632,69 +698,83 @@ public class TileController extends TileBase implements INetworkMaster, IEnergyR
         this.energyUsage = buf.readInt();
         this.redstoneMode = RedstoneMode.getById(buf.readInt());
 
-        List<ClientSlave> slaves = new ArrayList<ClientSlave>();
+        List<ClientNode> nodes = new ArrayList<ClientNode>();
 
         int size = buf.readInt();
 
         for (int i = 0; i < size; ++i) {
-            ClientSlave slave = new ClientSlave();
+            ClientNode node = new ClientNode();
 
-            slave.energyUsage = buf.readInt();
-            slave.amount = buf.readInt();
-            slave.stack = ByteBufUtils.readItemStack(buf);
+            node.energyUsage = buf.readInt();
+            node.amount = buf.readInt();
+            node.stack = ByteBufUtils.readItemStack(buf);
 
-            slaves.add(slave);
+            nodes.add(node);
         }
 
-        this.clientSlaves = slaves;
+        this.clientNodes = nodes;
     }
 
     @Override
     public void writeContainerData(ByteBuf buf) {
         buf.writeInt(energy.getEnergyStored());
-        buf.writeInt(energyUsage);
+        buf.writeInt(getEnergyUsage());
 
         buf.writeInt(redstoneMode.id);
 
-        List<ClientSlave> clientSlaves = new ArrayList<ClientSlave>();
+        List<ClientNode> clientNodes = new ArrayList<ClientNode>();
 
-        for (INetworkSlave slave : slaves) {
-            if (slave.canUpdate()) {
-                IBlockState state = worldObj.getBlockState(slave.getPosition());
+        for (INetworkNode node : nodes) {
+            if (node.canUpdate()) {
+                IBlockState state = worldObj.getBlockState(node.getPosition());
 
-                ClientSlave clientSlave = new ClientSlave();
+                ClientNode clientNode = new ClientNode();
 
-                clientSlave.energyUsage = slave.getEnergyUsage();
-                clientSlave.amount = 1;
-                clientSlave.stack = new ItemStack(state.getBlock(), 1, state.getBlock().getMetaFromState(state));
+                clientNode.energyUsage = node.getEnergyUsage();
+                clientNode.amount = 1;
+                clientNode.stack = new ItemStack(state.getBlock(), 1, state.getBlock().getMetaFromState(state));
 
-                if (clientSlave.stack.getItem() != null) {
-                    if (clientSlaves.contains(clientSlave)) {
-                        for (ClientSlave other : clientSlaves) {
-                            if (other.equals(clientSlave)) {
+                if (clientNode.stack.getItem() != null) {
+                    if (clientNodes.contains(clientNode)) {
+                        for (ClientNode other : clientNodes) {
+                            if (other.equals(clientNode)) {
                                 other.amount++;
 
                                 break;
                             }
                         }
                     } else {
-                        clientSlaves.add(clientSlave);
+                        clientNodes.add(clientNode);
                     }
                 }
             }
         }
 
-        buf.writeInt(clientSlaves.size());
+        buf.writeInt(clientNodes.size());
 
-        for (ClientSlave slave : clientSlaves) {
-            buf.writeInt(slave.energyUsage);
-            buf.writeInt(slave.amount);
-            ByteBufUtils.writeItemStack(buf, slave.stack);
+        for (ClientNode node : clientNodes) {
+            buf.writeInt(node.energyUsage);
+            buf.writeInt(node.amount);
+            ByteBufUtils.writeItemStack(buf, node.stack);
         }
     }
 
     @Override
     public Class<? extends Container> getContainer() {
         return ContainerController.class;
+    }
+
+    @Override
+    public <T> T getCapability(Capability<T> capability, EnumFacing facing) {
+        if (RefinedStorage.hasTesla() && (capability == TeslaCapabilities.CAPABILITY_HOLDER || capability == TeslaCapabilities.CAPABILITY_CONSUMER)) {
+            return (T) this;
+        }
+
+        return super.getCapability(capability, facing);
+    }
+
+    @Override
+    public boolean hasCapability(Capability<?> capability, EnumFacing facing) {
+        return (RefinedStorage.hasTesla() && (capability == TeslaCapabilities.CAPABILITY_HOLDER || capability == TeslaCapabilities.CAPABILITY_CONSUMER)) || super.hasCapability(capability, facing);
     }
 }

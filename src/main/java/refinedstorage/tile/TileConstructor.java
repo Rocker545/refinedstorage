@@ -23,10 +23,10 @@ import refinedstorage.inventory.BasicItemValidator;
 import refinedstorage.item.ItemUpgrade;
 import refinedstorage.tile.config.ICompareConfig;
 
-public class TileConstructor extends TileSlave implements ICompareConfig {
-    public static final String NBT_COMPARE = "Compare";
+public class TileConstructor extends TileNode implements ICompareConfig {
+    private static final String NBT_COMPARE = "Compare";
 
-    public static final int BASE_SPEED = 20;
+    private static final int BASE_SPEED = 20;
 
     private BasicItemHandler filter = new BasicItemHandler(1, this) {
         @Override
@@ -50,16 +50,16 @@ public class TileConstructor extends TileSlave implements ICompareConfig {
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.constructorRfUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
+        return RefinedStorage.INSTANCE.constructorUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
         if (block != null && ticks % RefinedStorageUtils.getSpeed(upgrades, BASE_SPEED, 4) == 0) {
             BlockPos front = pos.offset(getDirection());
 
             if (worldObj.isAirBlock(front) && block.getBlock().canPlaceBlockAt(worldObj, front)) {
-                ItemStack took = network.take(filter.getStackInSlot(0), 1, compare);
+                ItemStack took = network.extractItem(filter.getStackInSlot(0), 1, compare);
 
                 if (took != null) {
                     scheduler.resetSchedule();

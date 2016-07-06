@@ -4,12 +4,12 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.world.World;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
 import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageBlocks;
 import refinedstorage.RefinedStorageUtils;
+import refinedstorage.api.network.INetworkMaster;
 import refinedstorage.api.storage.IStorage;
 import refinedstorage.api.storage.IStorageProvider;
 import refinedstorage.apiimpl.storage.NBTStorage;
@@ -22,7 +22,7 @@ import refinedstorage.tile.config.*;
 
 import java.util.List;
 
-public class TileStorage extends TileSlave implements IStorageProvider, IStorageGui, ICompareConfig, IModeConfig {
+public class TileStorage extends TileNode implements IStorageProvider, IStorageGui, ICompareConfig, IModeConfig {
     class Storage extends NBTStorage {
         public Storage() {
             super(TileStorage.this.getStorageTag(), TileStorage.this.getCapacity(), TileStorage.this);
@@ -34,19 +34,20 @@ public class TileStorage extends TileSlave implements IStorageProvider, IStorage
         }
 
         @Override
-        public ItemStack push(ItemStack stack, int size, boolean simulate) {
+        public ItemStack insertItem(ItemStack stack, int size, boolean simulate) {
             if (!ModeFilter.respectsMode(filters, TileStorage.this, compare, stack)) {
                 return ItemHandlerHelper.copyStackWithSize(stack, size);
             }
 
-            return super.push(stack, size, simulate);
+            return super.insertItem(stack, size, simulate);
         }
     }
 
     public static final String NBT_STORAGE = "Storage";
-    public static final String NBT_PRIORITY = "Priority";
-    public static final String NBT_COMPARE = "Compare";
-    public static final String NBT_MODE = "Mode";
+
+    private static final String NBT_PRIORITY = "Priority";
+    private static final String NBT_COMPARE = "Compare";
+    private static final String NBT_MODE = "Mode";
 
     private BasicItemHandler filters = new BasicItemHandler(9, this);
 
@@ -63,11 +64,11 @@ public class TileStorage extends TileSlave implements IStorageProvider, IStorage
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.storageRfUsage;
+        return RefinedStorage.INSTANCE.storageUsage;
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
     }
 
     @Override
@@ -76,16 +77,27 @@ public class TileStorage extends TileSlave implements IStorageProvider, IStorage
 
         if (storage == null && storageTag != null) {
             storage = new Storage();
+
+            if (network != null) {
+                network.getStorage().rebuild();
+            }
         }
     }
 
     @Override
-    public void disconnect(World world) {
-        super.disconnect(world);
+    public void onDisconnected() {
+        super.onDisconnected();
 
         if (storage != null) {
             storage.writeToNBT();
         }
+    }
+
+    @Override
+    public void onConnectionChange(INetworkMaster network, boolean state) {
+        super.onConnectionChange(network, state);
+
+        network.getStorage().rebuild();
     }
 
     @Override
@@ -221,7 +233,7 @@ public class TileStorage extends TileSlave implements IStorageProvider, IStorage
 
     @Override
     public void onPriorityChanged(int priority) {
-        RefinedStorage.NETWORK.sendToServer(new MessagePriorityUpdate(pos, priority));
+        RefinedStorage.INSTANCE.network.sendToServer(new MessagePriorityUpdate(pos, priority));
     }
 
     public NBTTagCompound getStorageTag() {

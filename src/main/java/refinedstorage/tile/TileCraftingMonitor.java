@@ -12,16 +12,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class TileCraftingMonitor extends TileSlave {
+public class TileCraftingMonitor extends TileNode {
     private List<ClientSideCraftingTask> tasks = new ArrayList<ClientSideCraftingTask>();
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.craftingMonitorRfUsage;
+        return RefinedStorage.INSTANCE.craftingMonitorUsage;
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
     }
 
     @Override

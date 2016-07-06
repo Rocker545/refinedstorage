@@ -1,27 +1,25 @@
 package refinedstorage.network;
 
 import io.netty.buffer.ByteBuf;
-import net.minecraft.client.Minecraft;
-import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.fml.common.network.ByteBufUtils;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessage;
 import net.minecraftforge.fml.common.network.simpleimpl.IMessageHandler;
 import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
+import refinedstorage.RefinedStorage;
 import refinedstorage.api.network.INetworkMaster;
-import refinedstorage.container.ContainerGrid;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class MessageGridItems implements IMessage, IMessageHandler<MessageGridItems, IMessage> {
+public class MessageGridUpdate implements IMessage, IMessageHandler<MessageGridUpdate, IMessage> {
     private INetworkMaster network;
     private List<ItemStack> items = new ArrayList<ItemStack>();
 
-    public MessageGridItems() {
+    public MessageGridUpdate() {
     }
 
-    public MessageGridItems(INetworkMaster network) {
+    public MessageGridUpdate(INetworkMaster network) {
         this.network = network;
     }
 
@@ -30,10 +28,8 @@ public class MessageGridItems implements IMessage, IMessageHandler<MessageGridIt
         int items = buf.readInt();
 
         for (int i = 0; i < items; ++i) {
-            int size = buf.readInt();
-
             ItemStack stack = ByteBufUtils.readItemStack(buf);
-            stack.stackSize = size;
+            stack.stackSize = buf.readInt();
 
             this.items.add(stack);
         }
@@ -43,19 +39,15 @@ public class MessageGridItems implements IMessage, IMessageHandler<MessageGridIt
     public void toBytes(ByteBuf buf) {
         buf.writeInt(network.getStorage().getStacks().size());
 
-        for (ItemStack item : network.getStorage().getStacks()) {
-            buf.writeInt(item.stackSize);
-            ByteBufUtils.writeItemStack(buf, item);
+        for (ItemStack stack : network.getStorage().getStacks()) {
+            ByteBufUtils.writeItemStack(buf, stack);
+            buf.writeInt(stack.stackSize);
         }
     }
 
     @Override
-    public IMessage onMessage(MessageGridItems message, MessageContext ctx) {
-        Container container = Minecraft.getMinecraft().thePlayer.openContainer;
-
-        if (container instanceof ContainerGrid) {
-            ((ContainerGrid) container).getGrid().setItems(message.items);
-        }
+    public IMessage onMessage(MessageGridUpdate message, MessageContext ctx) {
+        RefinedStorage.INSTANCE.items = message.items;
 
         return null;
     }

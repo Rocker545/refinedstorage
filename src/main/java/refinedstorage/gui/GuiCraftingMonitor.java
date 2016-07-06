@@ -15,10 +15,10 @@ import java.io.IOException;
 import java.util.Arrays;
 
 public class GuiCraftingMonitor extends GuiBase {
-    public static final int VISIBLE_ROWS = 3;
+    private static final int VISIBLE_ROWS = 3;
 
-    public static final int ITEM_WIDTH = 72;
-    public static final int ITEM_HEIGHT = 30;
+    private static final int ITEM_WIDTH = 72;
+    private static final int ITEM_HEIGHT = 30;
 
     private TileCraftingMonitor craftingMonitor;
 
@@ -161,9 +161,9 @@ public class GuiCraftingMonitor extends GuiBase {
         super.actionPerformed(button);
 
         if (button == cancelButton && itemSelected != -1) {
-            RefinedStorage.NETWORK.sendToServer(new MessageCraftingMonitorCancel(craftingMonitor, craftingMonitor.getTasks().get(itemSelected).id));
+            RefinedStorage.INSTANCE.network.sendToServer(new MessageCraftingMonitorCancel(craftingMonitor, craftingMonitor.getTasks().get(itemSelected).id));
         } else if (button == cancelAllButton && craftingMonitor.getTasks().size() > 0) {
-            RefinedStorage.NETWORK.sendToServer(new MessageCraftingMonitorCancel(craftingMonitor, -1));
+            RefinedStorage.INSTANCE.network.sendToServer(new MessageCraftingMonitorCancel(craftingMonitor, -1));
         }
     }
 

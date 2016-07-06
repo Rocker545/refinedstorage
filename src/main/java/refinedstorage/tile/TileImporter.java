@@ -20,9 +20,9 @@ import refinedstorage.tile.config.IModeConfig;
 import refinedstorage.tile.config.ModeConstants;
 import refinedstorage.tile.config.ModeFilter;
 
-public class TileImporter extends TileSlave implements ICompareConfig, IModeConfig {
-    public static final String NBT_COMPARE = "Compare";
-    public static final String NBT_MODE = "Mode";
+public class TileImporter extends TileNode implements ICompareConfig, IModeConfig {
+    private static final String NBT_COMPARE = "Compare";
+    private static final String NBT_MODE = "Mode";
 
     private BasicItemHandler filters = new BasicItemHandler(9, this);
     private BasicItemHandler upgrades = new BasicItemHandler(
@@ -39,11 +39,11 @@ public class TileImporter extends TileSlave implements ICompareConfig, IModeConf
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.importerRfUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
+        return RefinedStorage.INSTANCE.importerUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
         IItemHandler handler = RefinedStorageUtils.getItemHandler(getFacingTile(), getDirection().getOpposite());
 
         if (getFacingTile() instanceof TileDiskDrive || handler == null) {
@@ -64,8 +64,8 @@ public class TileImporter extends TileSlave implements ICompareConfig, IModeConf
 
                 ItemStack result = handler.extractItem(currentSlot, quantity, true);
 
-                if (result != null && network.push(result, result.stackSize, true) == null) {
-                    network.push(result, result.stackSize, false);
+                if (result != null && network.insertItem(result, result.stackSize, true) == null) {
+                    network.insertItem(result, result.stackSize, false);
 
                     handler.extractItem(currentSlot, quantity, false);
                 } else {

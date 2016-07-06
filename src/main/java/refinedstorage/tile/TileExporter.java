@@ -19,8 +19,8 @@ import refinedstorage.inventory.BasicItemValidator;
 import refinedstorage.item.ItemUpgrade;
 import refinedstorage.tile.config.ICompareConfig;
 
-public class TileExporter extends TileSlave implements ICompareConfig {
-    public static final String NBT_COMPARE = "Compare";
+public class TileExporter extends TileNode implements ICompareConfig {
+    private static final String NBT_COMPARE = "Compare";
 
     private BasicItemHandler filters = new BasicItemHandler(9, this);
     private BasicItemHandler upgrades = new BasicItemHandler(
@@ -37,11 +37,11 @@ public class TileExporter extends TileSlave implements ICompareConfig {
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.exporterRfUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
+        return RefinedStorage.INSTANCE.exporterUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
         IItemHandler handler = RefinedStorageUtils.getItemHandler(getFacingTile(), getDirection().getOpposite());
 
         int size = RefinedStorageUtils.hasUpgrade(upgrades, ItemUpgrade.TYPE_STACK) ? 64 : 1;
@@ -51,7 +51,7 @@ public class TileExporter extends TileSlave implements ICompareConfig {
                 ItemStack slot = filters.getStackInSlot(i);
 
                 if (slot != null) {
-                    ItemStack took = network.take(slot, size, compare);
+                    ItemStack took = network.extractItem(slot, size, compare);
 
                     if (took != null) {
                         scheduler.resetSchedule();
@@ -59,7 +59,7 @@ public class TileExporter extends TileSlave implements ICompareConfig {
                         ItemStack remainder = ItemHandlerHelper.insertItem(handler, took, false);
 
                         if (remainder != null) {
-                            network.push(remainder, remainder.stackSize, false);
+                            network.insertItem(remainder, remainder.stackSize, false);
                         }
                     } else if (RefinedStorageUtils.hasUpgrade(upgrades, ItemUpgrade.TYPE_CRAFTING)) {
                         if (scheduler.canSchedule(compare, slot)) {

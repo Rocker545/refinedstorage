@@ -8,12 +8,14 @@ import refinedstorage.api.autocrafting.ICraftingPattern;
 import refinedstorage.api.autocrafting.ICraftingTask;
 import refinedstorage.api.storage.CompareFlags;
 import refinedstorage.api.storage.IGroupedStorage;
-import refinedstorage.api.storage.IStorage;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.List;
 
+/**
+ * Represents a network master, usually is a controller.
+ */
 public interface INetworkMaster {
     /**
      * @return The energy storage of this network
@@ -21,12 +23,12 @@ public interface INetworkMaster {
     EnergyStorage getEnergy();
 
     /**
-     * @return The energy usage of this network
+     * @return The energy usage per tick of this network
      */
     int getEnergyUsage();
 
     /**
-     * @return The position of this network in the world (usually where the controller is)
+     * @return The position of this network in the world
      */
     BlockPos getPosition();
 
@@ -36,27 +38,17 @@ public interface INetworkMaster {
     boolean canRun();
 
     /**
-     * @return A list with all network slaves
+     * @return A list with all the network nodes
      */
-    List<INetworkSlave> getSlaves();
+    List<INetworkNode> getNodes();
 
     /**
-     * @param slave The slave to add
-     */
-    void addSlave(@Nonnull INetworkSlave slave);
-
-    /**
-     * @param slave The slave to remove
-     */
-    void removeSlave(@Nonnull INetworkSlave slave);
-
-    /**
-     * @return The grid handler for this network
+     * @return The {@link IGridHandler} for this network
      */
     IGridHandler getGridHandler();
 
     /**
-     * @return The wireless grid handler for this network
+     * @return The {@link IWirelessGridHandler} for this network
      */
     IWirelessGridHandler getWirelessGridHandler();
 
@@ -64,11 +56,6 @@ public interface INetworkMaster {
      * @return The {@link IGroupedStorage} of this network
      */
     IGroupedStorage getStorage();
-
-    /**
-     * @return The storages connected to this network
-     */
-    List<IStorage> getStorages();
 
     /**
      * @return The crafting tasks in this network, do NOT modify this list
@@ -90,7 +77,7 @@ public interface INetworkMaster {
     void addCraftingTaskAsLast(@Nonnull ICraftingTask task);
 
     /**
-     * Creates a crafting task from a pattern.
+     * Creates a crafting task from a {@link ICraftingPattern}.
      *
      * @param pattern The pattern to create a task for
      * @return A task
@@ -110,9 +97,19 @@ public interface INetworkMaster {
     List<ICraftingPattern> getPatterns();
 
     /**
+     * Rebuilds the pattern list.
+     */
+    void rebuildPatterns();
+
+    /**
+     * Rebuilds the network node list.
+     */
+    void rebuildNodes();
+
+    /**
      * Returns crafting patterns from an item stack.
      *
-     * @param pattern The item to get a pattern for
+     * @param pattern The {@link ItemStack} to get a pattern for
      * @param flags   The flags to compare on, see {@link CompareFlags}
      * @return A list of crafting patterns where the given pattern is one of the outputs
      */
@@ -127,34 +124,42 @@ public interface INetworkMaster {
     ICraftingPattern getPattern(ItemStack pattern, int flags);
 
     /**
-     * Sends to all clients in a grid a packet with all the items in this network.
+     * Sends a grid packet with all the items to all clients that are watching a grid.
      */
     void sendStorageToClient();
 
     /**
-     * Sends a player a packet with all the items in this network.
+     * Sends a grid packet with all the items to a specific player.
      */
     void sendStorageToClient(EntityPlayerMP player);
 
     /**
-     * Pushes an item to this network.
+     * Sends a storage change to all clients that are watching a grid.
      *
-     * @param stack    The stack prototype to push, do NOT modify
-     * @param size     The amount of that prototype that has to be pushed
-     * @param simulate If we are simulating
-     * @return null if the push was successful, or a {@link ItemStack} with the remainder
+     * @param stack The stack
+     * @param delta The delta
      */
-    @Nullable
-    ItemStack push(@Nonnull ItemStack stack, int size, boolean simulate);
+    void sendStorageDeltaToClient(ItemStack stack, int delta);
 
     /**
-     * Takes an item from this network.
+     * Inserts an item to this network.
      *
-     * @param stack A prototype of the stack to take, do NOT modify
-     * @param size  The amount of that prototype that has to be taken
-     * @param flags The flags to compare on, see {@link CompareFlags}
-     * @return null if we didn't takeFromNetwork anything, or a {@link ItemStack} with the result
+     * @param stack    The stack prototype to insert, do NOT modify
+     * @param size     The amount of that prototype that has to be inserted
+     * @param simulate If we are simulating
+     * @return null if the insert was successful, or an {@link ItemStack} with the remainder
      */
     @Nullable
-    ItemStack take(@Nonnull ItemStack stack, int size, int flags);
+    ItemStack insertItem(@Nonnull ItemStack stack, int size, boolean simulate);
+
+    /**
+     * Extracts an item from this network.
+     *
+     * @param stack The prototype of the stack to extract, do NOT modify
+     * @param size  The amount of that prototype that has to be extracted
+     * @param flags The flags to compare on, see {@link CompareFlags}
+     * @return null if we didn't extract anything, or a {@link ItemStack} with the result
+     */
+    @Nullable
+    ItemStack extractItem(@Nonnull ItemStack stack, int size, int flags);
 }

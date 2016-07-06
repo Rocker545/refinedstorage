@@ -13,7 +13,7 @@ import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageGui;
 import refinedstorage.tile.externalstorage.TileExternalStorage;
 
-public class BlockExternalStorage extends BlockSlave {
+public class BlockExternalStorage extends BlockNode {
     public BlockExternalStorage() {
         super("external_storage");
     }
@@ -37,7 +37,7 @@ public class BlockExternalStorage extends BlockSlave {
         super.neighborChanged(state, world, pos, block);
 
         if (!world.isRemote) {
-            ((TileExternalStorage) world.getTileEntity(pos)).refreshStorage();
+            ((TileExternalStorage) world.getTileEntity(pos)).updateStorage();
         }
     }
 

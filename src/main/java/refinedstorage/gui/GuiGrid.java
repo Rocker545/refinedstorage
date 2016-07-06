@@ -12,7 +12,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import org.apache.commons.lang3.StringUtils;
 import refinedstorage.RefinedStorage;
-import refinedstorage.api.network.GridPullFlags;
+import refinedstorage.api.network.GridExtractFlags;
 import refinedstorage.block.EnumGridType;
 import refinedstorage.container.ContainerGrid;
 import refinedstorage.gui.sidebutton.SideButtonGridSearchBoxMode;
@@ -21,7 +21,7 @@ import refinedstorage.gui.sidebutton.SideButtonGridSortingType;
 import refinedstorage.gui.sidebutton.SideButtonRedstoneMode;
 import refinedstorage.jei.RefinedStorageJEIPlugin;
 import refinedstorage.network.MessageGridCraftingClear;
-import refinedstorage.network.MessageGridHeldPush;
+import refinedstorage.network.MessageGridInsertHeld;
 import refinedstorage.network.MessageGridPatternCreate;
 import refinedstorage.network.MessageGridPull;
 import refinedstorage.tile.grid.IGrid;
@@ -74,7 +74,7 @@ public class GuiGrid extends GuiBase {
     private int slotNumber;
 
     public GuiGrid(ContainerGrid container, IGrid grid) {
-        super(container, 193, (grid.getType() == EnumGridType.CRAFTING || grid.getType() == EnumGridType.PATTERN) ? 256 : 208);
+        super(container, 193, (grid.getType() == EnumGridType.CRAFTING || grid.getType() == EnumGridType.PATTERN) ? 247 : 208);
 
         setScrollbar(new Scrollbar(174, 20, 12, (grid.getType() == EnumGridType.CRAFTING || grid.getType() == EnumGridType.PATTERN) ? 70 : 88));
         getScrollbar().setCanScroll(false);
@@ -118,7 +118,7 @@ public class GuiGrid extends GuiBase {
         items.clear();
 
         if (grid.isConnected()) {
-            items.addAll(grid.getItems());
+            items.addAll(RefinedStorage.INSTANCE.items);
 
             String query = searchField.getText().trim().toLowerCase();
 
@@ -204,16 +204,16 @@ public class GuiGrid extends GuiBase {
     public boolean isOverClear(int mouseX, int mouseY) {
         switch (grid.getType()) {
             case CRAFTING:
-                return inBounds(81, 105, 7, 7, mouseX, mouseY);
+                return inBounds(82, 95, 7, 7, mouseX, mouseY);
             case PATTERN:
-                return inBounds(64, 105, 7, 7, mouseX, mouseY);
+                return inBounds(64, 95, 7, 7, mouseX, mouseY);
             default:
                 return false;
         }
     }
 
     public boolean isOverCreatePattern(int mouseX, int mouseY) {
-        return grid.getType() == EnumGridType.PATTERN && inBounds(152, 124, 16, 16, mouseX, mouseY) && ((TileGrid) grid).canCreatePattern();
+        return grid.getType() == EnumGridType.PATTERN && inBounds(152, 114, 16, 16, mouseX, mouseY) && ((TileGrid) grid).canCreatePattern();
     }
 
     @Override
@@ -239,7 +239,7 @@ public class GuiGrid extends GuiBase {
                 ty = 2;
             }
 
-            drawTexture(x + 152, y + 124, 195, ty * 16, 16, 16);
+            drawTexture(x + 152, y + 114, 195, ty * 16, 16, 16);
         }
 
         searchField.drawTextBox();
@@ -248,14 +248,7 @@ public class GuiGrid extends GuiBase {
     @Override
     public void drawForeground(int mouseX, int mouseY) {
         drawString(7, 7, t(grid instanceof WirelessGrid ? "gui.refinedstorage:wireless_grid" : "gui.refinedstorage:grid"));
-
-        if (grid.getType() == EnumGridType.CRAFTING) {
-            drawString(7, 95, t("container.crafting"));
-        } else if (grid.getType() == EnumGridType.PATTERN) {
-            drawString(7, 95, t("gui.refinedstorage:grid.pattern"));
-        }
-
-        drawString(7, (grid.getType() == EnumGridType.CRAFTING || grid.getType() == EnumGridType.PATTERN) ? 163 : 114, t("container.inventory"));
+        drawString(7, (grid.getType() == EnumGridType.CRAFTING || grid.getType() == EnumGridType.PATTERN) ? 153 : 114, t("container.inventory"));
 
         int x = 8;
         int y = 20;
@@ -351,16 +344,16 @@ public class GuiGrid extends GuiBase {
         if (clickedCreatePattern) {
             BlockPos gridPos = ((TileGrid) grid).getPos();
 
-            RefinedStorage.NETWORK.sendToServer(new MessageGridPatternCreate(gridPos.getX(), gridPos.getY(), gridPos.getZ()));
+            RefinedStorage.INSTANCE.network.sendToServer(new MessageGridPatternCreate(gridPos.getX(), gridPos.getY(), gridPos.getZ()));
         } else if (grid.isConnected()) {
             if (clickedClear) {
-                RefinedStorage.NETWORK.sendToServer(new MessageGridCraftingClear((TileGrid) grid));
+                RefinedStorage.INSTANCE.network.sendToServer(new MessageGridCraftingClear((TileGrid) grid));
             }
 
             ItemStack held = container.getPlayer().inventory.getItemStack();
 
             if (isOverSlotArea(mouseX - guiLeft, mouseY - guiTop) && held != null && (clickedButton == 0 || clickedButton == 1)) {
-                RefinedStorage.NETWORK.sendToServer(new MessageGridHeldPush(clickedButton == 1));
+                RefinedStorage.INSTANCE.network.sendToServer(new MessageGridInsertHeld(clickedButton == 1));
             }
 
             if (isOverSlotWithItem() && (held == null || (held != null && clickedButton == 2))) {
@@ -370,18 +363,18 @@ public class GuiGrid extends GuiBase {
                     int flags = 0;
 
                     if (clickedButton == 1) {
-                        flags |= GridPullFlags.PULL_HALF;
+                        flags |= GridExtractFlags.EXTRACT_HALF;
                     }
 
                     if (GuiScreen.isShiftKeyDown()) {
-                        flags |= GridPullFlags.PULL_SHIFT;
+                        flags |= GridExtractFlags.EXTRACT_SHIFT;
                     }
 
                     if (clickedButton == 2) {
-                        flags |= GridPullFlags.PULL_SINGLE;
+                        flags |= GridExtractFlags.EXTRACT_SINGLE;
                     }
 
-                    RefinedStorage.NETWORK.sendToServer(new MessageGridPull(items.get(slotNumber), flags));
+                    RefinedStorage.INSTANCE.network.sendToServer(new MessageGridPull(items.get(slotNumber), flags));
                 }
             }
         }

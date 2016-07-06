@@ -6,7 +6,7 @@ import net.minecraft.util.EnumHand;
 import javax.annotation.Nullable;
 
 /**
- * Defines behaviour of wireless grids.
+ * Defines behavior of wireless grids.
  */
 public interface IWirelessGridHandler {
     /**
@@ -31,13 +31,6 @@ public interface IWirelessGridHandler {
     void onClose(EntityPlayer player);
 
     /**
-     * Sets the range of the wireless grid handler.
-     *
-     * @param range The range
-     */
-    void setRange(int range);
-
-    /**
      * @return The range wireless grids in this network can reach
      */
     int getRange();
@@ -54,7 +47,7 @@ public interface IWirelessGridHandler {
      * Returns a {@link WirelessGridConsumer} for a player.
      *
      * @param player The player to get the wireless grid consumer for
-     * @return The wireless grid consumer of the player, or null if the player isn't in a wireless grid
+     * @return The {@link IWirelessGridHandler} that corresponds to a player, or null if the player isn't using a wireless grid
      */
     @Nullable
     WirelessGridConsumer getConsumer(EntityPlayer player);

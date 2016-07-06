@@ -28,8 +28,8 @@ import java.util.List;
 import java.util.Set;
 
 public final class RefinedStorageUtils {
-    public static final String NBT_INVENTORY = "Inventory_%d";
-    public static final String NBT_SLOT = "Slot";
+    private static final String NBT_INVENTORY = "Inventory_%d";
+    private static final String NBT_SLOT = "Slot";
 
     public static void writeItems(IItemHandler handler, int id, NBTTagCompound nbt) {
         NBTTagList tagList = new NBTTagList();
@@ -298,11 +298,33 @@ public final class RefinedStorageUtils {
         }
     }
 
-    public static ItemStack takeFromNetwork(INetworkMaster network, ItemStack stack, int size) {
-        return network.take(stack, size, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
+    // Keep this on par with the Forestry generators (1 EU is worth 4 RF)
+    public static int convertIC2ToRF(double amount) {
+        // IC2 passes infinity sometimes as a simulate test
+        if (amount >= Double.POSITIVE_INFINITY) {
+            return Integer.MAX_VALUE;
+        }
+
+        return (int) Math.floor(amount) * 4;
     }
 
-    public static ICraftingPattern getPatternFromNetwork(INetworkMaster network, ItemStack stack) {
+    public static double convertRFToIC2(int amount) {
+        return Math.floor(amount / 4);
+    }
+
+    public static ItemStack extractItem(INetworkMaster network, ItemStack stack, int size) {
+        return network.extractItem(stack, size, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
+    }
+
+    public static ItemStack getItem(INetworkMaster network, ItemStack stack) {
+        return network.getStorage().get(stack, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
+    }
+
+    public static ICraftingPattern getPattern(INetworkMaster network, ItemStack stack) {
         return network.getPattern(stack, CompareFlags.COMPARE_DAMAGE | CompareFlags.COMPARE_NBT);
+    }
+
+    public static boolean hasPattern(INetworkMaster network, ItemStack stack) {
+        return RefinedStorageUtils.getPattern(network, stack) != null;
     }
 }

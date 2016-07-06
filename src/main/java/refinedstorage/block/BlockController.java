@@ -1,5 +1,6 @@
 package refinedstorage.block;
 
+import net.minecraft.block.Block;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.properties.PropertyEnum;
 import net.minecraft.block.properties.PropertyInteger;
@@ -105,10 +106,19 @@ public class BlockController extends BlockBase {
     @Override
     public void breakBlock(World world, BlockPos pos, IBlockState state) {
         if (!world.isRemote) {
-            ((TileController) world.getTileEntity(pos)).disconnectSlaves();
+            ((TileController) world.getTileEntity(pos)).disconnectAll();
         }
 
         super.breakBlock(world, pos, state);
+    }
+
+    @Override
+    public void neighborChanged(IBlockState state, World world, BlockPos pos, Block block) {
+        super.neighborChanged(state, world, pos, block);
+
+        if (!world.isRemote) {
+            ((TileController) world.getTileEntity(pos)).rebuildNodes();
+        }
     }
 
     @Override
@@ -119,6 +129,7 @@ public class BlockController extends BlockBase {
 
         stack.setTagCompound(new NBTTagCompound());
         stack.getTagCompound().setInteger(TileController.NBT_ENERGY, ((TileController) world.getTileEntity(pos)).getEnergy().getEnergyStored());
+        stack.getTagCompound().setInteger(TileController.NBT_ENERGY_CAPACITY, ((TileController) world.getTileEntity(pos)).getEnergy().getMaxEnergyStored());
 
         drops.add(stack);
 

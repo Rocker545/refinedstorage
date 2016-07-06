@@ -14,16 +14,16 @@ import refinedstorage.inventory.BasicItemHandler;
 import refinedstorage.inventory.BasicItemValidator;
 import refinedstorage.item.ItemUpgrade;
 
-public class TileWirelessTransmitter extends TileSlave {
+public class TileWirelessTransmitter extends TileNode {
     private BasicItemHandler upgrades = new BasicItemHandler(4, this, new BasicItemValidator(RefinedStorageItems.UPGRADE, ItemUpgrade.TYPE_RANGE));
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.wirelessTransmitterRfUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
+        return RefinedStorage.INSTANCE.wirelessTransmitterUsage + RefinedStorageUtils.getUpgradeEnergyUsage(upgrades);
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
     }
 
     @Override

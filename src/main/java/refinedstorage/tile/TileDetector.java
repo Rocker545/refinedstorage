@@ -4,27 +4,27 @@ import io.netty.buffer.ByteBuf;
 import net.minecraft.inventory.Container;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.world.World;
 import net.minecraftforge.items.IItemHandler;
 import refinedstorage.RefinedStorage;
 import refinedstorage.RefinedStorageBlocks;
 import refinedstorage.RefinedStorageUtils;
+import refinedstorage.api.network.INetworkMaster;
 import refinedstorage.container.ContainerDetector;
 import refinedstorage.inventory.BasicItemHandler;
 import refinedstorage.tile.config.ICompareConfig;
 import refinedstorage.tile.config.RedstoneMode;
 
-public class TileDetector extends TileSlave implements ICompareConfig {
+public class TileDetector extends TileNode implements ICompareConfig {
     public static final int SPEED = 5;
 
     public static final int MODE_UNDER = 0;
     public static final int MODE_EQUAL = 1;
     public static final int MODE_ABOVE = 2;
 
-    public static final String NBT_COMPARE = "Compare";
-    public static final String NBT_MODE = "Mode";
-    public static final String NBT_AMOUNT = "Amount";
-    public static final String NBT_POWERED = "Powered";
+    private static final String NBT_COMPARE = "Compare";
+    private static final String NBT_MODE = "Mode";
+    private static final String NBT_AMOUNT = "Amount";
+    private static final String NBT_POWERED = "Powered";
 
     private BasicItemHandler filter = new BasicItemHandler(1, this);
 
@@ -35,19 +35,12 @@ public class TileDetector extends TileSlave implements ICompareConfig {
     private boolean powered = false;
 
     @Override
-    public void disconnect(World world) {
-        powered = false;
-
-        super.disconnect(world);
-    }
-
-    @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.detectorRfUsage;
+        return RefinedStorage.INSTANCE.detectorUsage;
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
         if (ticks % SPEED == 0) {
             ItemStack slot = filter.getStackInSlot(0);
 
@@ -86,6 +79,15 @@ public class TileDetector extends TileSlave implements ICompareConfig {
 
                 RefinedStorageUtils.updateBlock(worldObj, pos);
             }
+        }
+    }
+
+    @Override
+    public void onConnectionChange(INetworkMaster network, boolean state) {
+        super.onConnectionChange(network, state);
+
+        if (!state) {
+            powered = false;
         }
     }
 

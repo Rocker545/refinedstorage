@@ -2,11 +2,10 @@ package refinedstorage.tile;
 
 import net.minecraft.inventory.Container;
 import refinedstorage.RefinedStorage;
-import refinedstorage.RefinedStorageBlocks;
 import refinedstorage.container.ContainerRelay;
 import refinedstorage.tile.config.RedstoneMode;
 
-public class TileRelay extends TileSlave {
+public class TileRelay extends TileNode {
     private boolean couldUpdate;
 
     public TileRelay() {
@@ -15,21 +14,26 @@ public class TileRelay extends TileSlave {
 
     @Override
     public int getEnergyUsage() {
-        return RefinedStorage.INSTANCE.relayRfUsage;
+        return RefinedStorage.INSTANCE.relayUsage;
     }
 
     @Override
-    public void updateSlave() {
+    public void updateNode() {
     }
 
     public void update() {
         super.update();
 
-        if (connected && couldUpdate != canUpdate()) {
+        if (network != null && couldUpdate != canUpdate()) {
             couldUpdate = canUpdate();
 
-            worldObj.notifyNeighborsOfStateChange(pos, RefinedStorageBlocks.RELAY);
+            network.rebuildNodes();
         }
+    }
+
+    @Override
+    public boolean canConduct() {
+        return canUpdate();
     }
 
     @Override

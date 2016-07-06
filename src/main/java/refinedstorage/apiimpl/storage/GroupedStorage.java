@@ -7,15 +7,19 @@ import net.minecraft.item.ItemStack;
 import refinedstorage.RefinedStorageUtils;
 import refinedstorage.api.autocrafting.ICraftingPattern;
 import refinedstorage.api.network.INetworkMaster;
+import refinedstorage.api.network.INetworkNode;
 import refinedstorage.api.storage.IGroupedStorage;
 import refinedstorage.api.storage.IStorage;
+import refinedstorage.api.storage.IStorageProvider;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 public class GroupedStorage implements IGroupedStorage {
     private INetworkMaster network;
+    private List<IStorage> storages = new ArrayList<IStorage>();
     private Multimap<Item, ItemStack> stacks = ArrayListMultimap.create();
-    private boolean rebuilding;
 
     public GroupedStorage(INetworkMaster network) {
         this.network = network;
@@ -23,11 +27,17 @@ public class GroupedStorage implements IGroupedStorage {
 
     @Override
     public void rebuild() {
-        this.rebuilding = true;
+        storages.clear();
+
+        for (INetworkNode node : network.getNodes()) {
+            if (node.canUpdate() && node instanceof IStorageProvider) {
+                ((IStorageProvider) node).addStorages(storages);
+            }
+        }
 
         stacks.clear();
 
-        for (IStorage storage : network.getStorages()) {
+        for (IStorage storage : storages) {
             for (ItemStack stack : storage.getItems()) {
                 add(stack);
             }
@@ -41,14 +51,7 @@ public class GroupedStorage implements IGroupedStorage {
             }
         }
 
-        this.rebuilding = false;
-
         network.sendStorageToClient();
-    }
-
-    @Override
-    public boolean isRebuilding() {
-        return rebuilding;
     }
 
     @Override
@@ -57,7 +60,7 @@ public class GroupedStorage implements IGroupedStorage {
             if (RefinedStorageUtils.compareStackNoQuantity(otherStack, stack)) {
                 otherStack.stackSize += stack.stackSize;
 
-                network.sendStorageToClient();
+                network.sendStorageDeltaToClient(stack, stack.stackSize);
 
                 return;
             }
@@ -65,7 +68,7 @@ public class GroupedStorage implements IGroupedStorage {
 
         stacks.put(stack.getItem(), stack.copy());
 
-        network.sendStorageToClient();
+        network.sendStorageDeltaToClient(stack, stack.stackSize);
     }
 
     @Override
@@ -75,12 +78,12 @@ public class GroupedStorage implements IGroupedStorage {
                 otherStack.stackSize -= stack.stackSize;
 
                 if (otherStack.stackSize == 0) {
-                    if (RefinedStorageUtils.getPatternFromNetwork(network, otherStack) == null) {
+                    if (!RefinedStorageUtils.hasPattern(network, stack)) {
                         stacks.remove(otherStack.getItem(), otherStack);
                     }
                 }
 
-                network.sendStorageToClient();
+                network.sendStorageDeltaToClient(stack, -stack.stackSize);
 
                 return;
             }
@@ -101,5 +104,10 @@ public class GroupedStorage implements IGroupedStorage {
     @Override
     public Collection<ItemStack> getStacks() {
         return stacks.values();
+    }
+
+    @Override
+    public List<IStorage> getStorages() {
+        return storages;
     }
 }
